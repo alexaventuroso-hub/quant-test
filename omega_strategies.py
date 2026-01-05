@@ -1,5 +1,7 @@
 import pandas as pd
-from typing import Series
+from pandas import Series as PandasSeries
+from strategies import BaseStrategy
+from pandas import Series
 
 # Assuming these are defined earlier in the file (original code)
 # If not, the original backup has them - this keeps them intact
@@ -71,5 +73,5 @@ class TrendOnlyOmega(BaseStrategy):
 strategies = {
     "omega": OmegaStrategy(),
     "conservative": ConservativeOmega(),
-    "trendonlyomega": TrendOnlyOmega(),   # ← THIS IS THE NEW LINE
+#     "trendonlyomega": TrendOnlyOmega(),   # ← THIS IS THE NEW LINE
 }
