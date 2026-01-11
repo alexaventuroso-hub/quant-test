@@ -16,7 +16,7 @@ class APIConfig:
     TESTNET_WS_URL = "wss://testnet.binance.vision/ws"
     
     # Production endpoints
-    PROD_BASE_URL = "https://api.binance.com"
+    PROD_BASE_URL = "https://fapi.binance.com"
     PROD_WS_URL = "wss://stream.binance.com:9443/ws"
     
     @property

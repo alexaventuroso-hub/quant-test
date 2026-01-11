@@ -40,52 +40,57 @@ class BinanceDataFetcher:
         params["signature"] = signature
         return params
     
-    def get_klines(
-        self, 
-        symbol: str, 
-        interval: str = "1h",
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
-        limit: int = 1000
-    ) -> pd.DataFrame:
-        """
-        Fetch historical candlestick data
+    def get_klines(self, symbol: str, interval: str, start_time: int = None, end_time: int = None, limit: int = 1000) -> pd.DataFrame:
+        """Fetch klines with pagination for large date ranges"""
+        all_data = []
+        current_start = start_time
         
-        Returns DataFrame with: open, high, low, close, volume, etc.
-        """
-        endpoint = f"{self.config.base_url}/api/v3/klines"
+        while True:
+            params = {
+                "symbol": symbol,
+                "interval": interval,
+                "limit": 1500,
+            }
+            if current_start:
+                params["startTime"] = current_start
+            if end_time:
+                params["endTime"] = end_time
+                
+            response = requests.get(f"https://fapi.binance.com/fapi/v1/klines", params=params)
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data:
+                break
+                
+            all_data.extend(data)
+            print(f"  Fetched {len(all_data)} candles...")
+            
+            if len(data) < 1500:
+                break
+            
+            current_start = data[-1][0] + 1
+            
+            if end_time and current_start >= end_time:
+                break
+            if len(all_data) > 200000:
+                break
         
-        params = {
-            "symbol": symbol,
-            "interval": TIMEFRAME_MAP.get(interval, interval),
-            "limit": min(limit, 1000)
-        }
-        
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        
-        response = self.session.get(endpoint, params=params)
-        response.raise_for_status()
-        data = response.json()
-        
-        df = pd.DataFrame(data, columns=[
-            "open_time", "open", "high", "low", "close", "volume",
+        if not all_data:
+            return pd.DataFrame()
+            
+        df = pd.DataFrame(all_data, columns=[
+            "timestamp", "open", "high", "low", "close", "volume",
             "close_time", "quote_volume", "trades", "taker_buy_base",
             "taker_buy_quote", "ignore"
         ])
-        
-        # Convert types
-        df["open_time"] = pd.to_datetime(df["open_time"], unit="ms")
-        df["close_time"] = pd.to_datetime(df["close_time"], unit="ms")
-        
-        for col in ["open", "high", "low", "close", "volume", "quote_volume"]:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+        for col in ["open", "high", "low", "close", "volume"]:
             df[col] = df[col].astype(float)
-        
-        df.set_index("open_time", inplace=True)
-        return df
-    
+        df = df.set_index("timestamp")
+        df = df[~df.index.duplicated(keep='first')]
+        return df[["open", "high", "low", "close", "volume"]]
+
     def get_historical_data(
         self,
         symbol: str,
@@ -116,8 +121,8 @@ class BinanceDataFetcher:
             all_data.append(df)
             
             # Move start time forward
-            last_time = int(df["close_time"].iloc[-1].timestamp() * 1000)
-            current_start = last_time + 1
+            # last_time = int(df["close_time"].iloc[-1].timestamp() * 1000)
+            break  # pagination now in get_klines
             
             # Rate limiting
             time.sleep(0.1)
@@ -128,21 +133,21 @@ class BinanceDataFetcher:
     
     def get_ticker_price(self, symbol: str) -> float:
         """Get current price for a symbol"""
-        endpoint = f"{self.config.base_url}/api/v3/ticker/price"
+        endpoint = f"{self.config.base_url}/fapi/v1/ticker/price"
         response = self.session.get(endpoint, params={"symbol": symbol})
         response.raise_for_status()
         return float(response.json()["price"])
     
     def get_all_tickers(self) -> Dict[str, float]:
         """Get all current prices"""
-        endpoint = f"{self.config.base_url}/api/v3/ticker/price"
+        endpoint = f"{self.config.base_url}/fapi/v1/ticker/price"
         response = self.session.get(endpoint)
         response.raise_for_status()
         return {item["symbol"]: float(item["price"]) for item in response.json()}
     
     def get_orderbook(self, symbol: str, limit: int = 100) -> Dict:
         """Get order book depth"""
-        endpoint = f"{self.config.base_url}/api/v3/depth"
+        endpoint = f"{self.config.base_url}/fapi/v1/depth"
         response = self.session.get(endpoint, params={"symbol": symbol, "limit": limit})
         response.raise_for_status()
         data = response.json()
@@ -155,7 +160,7 @@ class BinanceDataFetcher:
     
     def get_24h_stats(self, symbol: str) -> Dict:
         """Get 24h trading statistics"""
-        endpoint = f"{self.config.base_url}/api/v3/ticker/24hr"
+        endpoint = f"{self.config.base_url}/fapi/v1/ticker/24hr"
         response = self.session.get(endpoint, params={"symbol": symbol})
         response.raise_for_status()
         data = response.json()
